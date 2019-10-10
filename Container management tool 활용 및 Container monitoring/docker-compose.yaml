@@ -1,0 +1,101 @@
+# Required to docker 18.06+
+version: "3.7"
+
+services:
+  traefik:
+    image: traefik:latest
+    command: 
+      - --web
+      - --docker
+      - --docker.swarmmode
+      - --docker.watch
+    ports:
+      - 80:80
+      - 8080:8080
+    networks:
+      - external
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    deploy:
+      placement:
+        constraints: [node.role==manager]
+      update_config:
+        parallelism: 2
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+        delay: 5s
+
+  portainer:
+    image: portainer/portainer:latest
+    command: -H unix:///var/run/docker.sock
+    ports:
+      - 9000:9000
+    networks:
+      - external
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    deploy:
+      placement:
+        constraints: [node.role==manager]
+
+  visualizer:
+    image: dockersamples/visualizer:latest
+    ports:
+      - 8081:8080
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - external
+    deploy:
+      placement:
+        constraints: [node.role==manager]
+
+  web:
+    image: 322749112518.dkr.ecr.ap-northeast-2.amazonaws.com/web-repo:latest
+    networks: 
+      - external
+    # helthcheck:
+    #   test: curl localhost:80/index.html
+
+    deploy:
+      # mode: replicated
+      # replicas: 3
+
+      mode: global
+      # placement:
+      #   constraints:
+      #     - node.label.db == true
+      labels:
+        - "traefik.port=80"
+        - "traefik.enable=true"
+        - "traefik.docker.network=fastcampus_external"
+        - "traefik.backend=web"
+        - "traefik.frontend.rule=Host:web.local.dev"
+
+  counter:
+    image: subicura/counter:latest
+    networks: 
+      - external
+      - internal
+    environment: 
+      - REDIS_HOST=redis
+    deploy:
+      mode: global
+      labels:
+        - "traefik.port=4567"
+        - "traefik.enable=true"
+        - "traefik.docker.network=fastcampus_external"
+        - "traefik.backend=counter"
+        - "traefik.frontend.rule=Host:counter.local.dev"
+
+  redis:
+    image: redis:latest
+    networks: 
+      - internal
+
+networks:
+  external:
+    driver: overlay
+    # external: true
+  internal:
